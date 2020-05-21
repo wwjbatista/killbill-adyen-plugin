@@ -1,6 +1,6 @@
 /*
- * Copyright 2014-2016 Groupon, Inc
- * Copyright 2014-2016 The Billing Project, LLC
+ * Copyright 2014-2018 Groupon, Inc
+ * Copyright 2014-2018 The Billing Project, LLC
  *
  * The Billing Project licenses this file to you under the Apache License, version 2.0
  * (the "License"); you may not use this file except in compliance with the
@@ -18,6 +18,7 @@
 package org.killbill.billing.plugin.adyen.client.payment.service;
 
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.UUID;
 
 import org.killbill.billing.catalog.api.Currency;
@@ -39,13 +40,14 @@ import static org.testng.Assert.assertFalse;
 
 public class TestRemoteAdyenPaymentServiceProviderPort extends TestRemoteBase {
 
-    @Test(groups = "slow")
+    @Test(groups = "integration")
     public void testAuthorizeAndMultiplePartialCaptures() throws Exception {
         final PaymentData<Card> paymentData = new PaymentData<Card>(BigDecimal.TEN, DEFAULT_CURRENCY, UUID.randomUUID().toString(), getCreditCard());
         final UserData userData = new UserData();
         final SplitSettlementData splitSettlementData = null;
+        final Map<String, String> additionalData = null;
 
-        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData);
+        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData, additionalData);
         // Adyen's unique reference that is associated with the payment
         Assert.assertNotNull(authorizeResult.getPspReference());
         // Result of the payment. The possible values are Authorised, Refused, Error or Received (as with a Dutch Direct Debit)
@@ -60,24 +62,25 @@ public class TestRemoteAdyenPaymentServiceProviderPort extends TestRemoteBase {
 
         // First capture
         final PaymentData paymentData1 = new PaymentData<Card>(captureAmount, DEFAULT_CURRENCY, UUID.randomUUID().toString(), getCreditCard());
-        final PaymentModificationResponse capture1Result = adyenPaymentServiceProviderPort.capture(merchantAccount, paymentData1, pspReference, splitSettlementData);
+        final PaymentModificationResponse capture1Result = adyenPaymentServiceProviderPort.capture(merchantAccount, paymentData1, pspReference, splitSettlementData, additionalData);
         Assert.assertNotNull(capture1Result.getPspReference());
         Assert.assertEquals(capture1Result.getResponse(), "[capture-received]");
 
         // Second capture
         final PaymentData paymentData2 = new PaymentData<Card>(captureAmount, DEFAULT_CURRENCY, UUID.randomUUID().toString(), getCreditCard());
-        final PaymentModificationResponse capture2Result = adyenPaymentServiceProviderPort.capture(merchantAccount, paymentData2, pspReference, splitSettlementData);
+        final PaymentModificationResponse capture2Result = adyenPaymentServiceProviderPort.capture(merchantAccount, paymentData2, pspReference, splitSettlementData, additionalData);
         Assert.assertNotNull(capture2Result.getPspReference());
         Assert.assertEquals(capture2Result.getResponse(), "[capture-received]");
     }
 
-    @Test(groups = "slow")
+    @Test(groups = "integration")
     public void testAuthorizeAndVoid() throws Exception {
         final PaymentData<Card> paymentData = new PaymentData<Card>(BigDecimal.TEN, DEFAULT_CURRENCY, UUID.randomUUID().toString(), getCreditCard());
         final UserData userData = new UserData();
         final SplitSettlementData splitSettlementData = null;
+        final Map<String, String> additionalData = null;
 
-        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData);
+        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData, additionalData);
         Assert.assertNotNull(authorizeResult.getPspReference());
         Assert.assertEquals(authorizeResult.getResultCode(), "Authorised");
         Assert.assertNotNull(authorizeResult.getAuthCode());
@@ -86,18 +89,19 @@ public class TestRemoteAdyenPaymentServiceProviderPort extends TestRemoteBase {
         final String pspReference = authorizeResult.getPspReference();
 
         final PaymentData paymentData1 = new PaymentData<Card>(null, null, UUID.randomUUID().toString(), getCreditCard());
-        final PaymentModificationResponse voidResult = adyenPaymentServiceProviderPort.cancel(merchantAccount, paymentData1, pspReference, splitSettlementData);
+        final PaymentModificationResponse voidResult = adyenPaymentServiceProviderPort.cancel(merchantAccount, paymentData1, pspReference, splitSettlementData, additionalData);
         Assert.assertNotNull(voidResult.getPspReference());
         Assert.assertEquals(voidResult.getResponse(), "[cancel-received]");
     }
 
-    @Test(groups = "slow")
+    @Test(groups = "integration")
     public void testAuthorizeCaptureAndRefund() throws Exception {
         final PaymentData<Card> paymentData = new PaymentData<Card>(BigDecimal.TEN, DEFAULT_CURRENCY, UUID.randomUUID().toString(), getCreditCard());
         final UserData userData = new UserData();
         final SplitSettlementData splitSettlementData = null;
+        final Map<String, String> additionalData = null;
 
-        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData);
+        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData, additionalData);
         Assert.assertNotNull(authorizeResult.getPspReference());
         Assert.assertEquals(authorizeResult.getResultCode(), "Authorised");
         Assert.assertNotNull(authorizeResult.getAuthCode());
@@ -108,7 +112,7 @@ public class TestRemoteAdyenPaymentServiceProviderPort extends TestRemoteBase {
         final String capturePspReference = authorizeResult.getPspReference();
 
         final PaymentData paymentData1 = new PaymentData<Card>(captureAmount, DEFAULT_CURRENCY, UUID.randomUUID().toString(), getCreditCard());
-        final PaymentModificationResponse captureResult = adyenPaymentServiceProviderPort.capture(merchantAccount, paymentData1, capturePspReference, splitSettlementData);
+        final PaymentModificationResponse captureResult = adyenPaymentServiceProviderPort.capture(merchantAccount, paymentData1, capturePspReference, splitSettlementData, additionalData);
         Assert.assertNotNull(captureResult.getPspReference());
         Assert.assertEquals(captureResult.getResponse(), "[capture-received]");
 
@@ -117,18 +121,19 @@ public class TestRemoteAdyenPaymentServiceProviderPort extends TestRemoteBase {
         final String refundPspReference = captureResult.getPspReference();
 
         final PaymentData paymentData2 = new PaymentData<Card>(refundAmount, DEFAULT_CURRENCY, UUID.randomUUID().toString(), getCreditCard());
-        final PaymentModificationResponse refundResult = adyenPaymentServiceProviderPort.refund(merchantAccount, paymentData2, refundPspReference, splitSettlementData);
+        final PaymentModificationResponse refundResult = adyenPaymentServiceProviderPort.refund(merchantAccount, paymentData2, refundPspReference, splitSettlementData, additionalData);
         Assert.assertNotNull(refundResult.getPspReference());
         Assert.assertEquals(refundResult.getResponse(), "[refund-received]");
     }
 
-    @Test(groups = "slow")
+    @Test(groups = "integration")
     public void testAuthorizeAndBadVoid() throws Exception {
         final PaymentData<Card> paymentData = new PaymentData<Card>(BigDecimal.TEN, DEFAULT_CURRENCY, UUID.randomUUID().toString(), getCreditCard());
         final UserData userData = new UserData();
         final SplitSettlementData splitSettlementData = null;
+        final Map<String, String> additionalData = null;
 
-        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData);
+        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData, additionalData);
         Assert.assertNotNull(authorizeResult.getPspReference());
         Assert.assertEquals(authorizeResult.getResultCode(), "Authorised");
         Assert.assertNotNull(authorizeResult.getAuthCode());
@@ -137,12 +142,12 @@ public class TestRemoteAdyenPaymentServiceProviderPort extends TestRemoteBase {
         final String pspReference = UUID.randomUUID().toString();
 
         final PaymentData paymentData1 = new PaymentData<Card>(null, null, UUID.randomUUID().toString(), getCreditCard());
-        final PaymentModificationResponse voidResult = adyenPaymentServiceProviderPort.cancel(merchantAccount, paymentData1, pspReference, splitSettlementData);
+        final PaymentModificationResponse voidResult = adyenPaymentServiceProviderPort.cancel(merchantAccount, paymentData1, pspReference, splitSettlementData, additionalData);
         assertFalse(voidResult.isTechnicallySuccessful());
     }
 
     // Disabled by default since Apple Pay isn't enabled automatically on the sandbox
-    @Test(groups = "slow", enabled = false)
+    @Test(groups = "integration", enabled = false)
     public void testAutoCaptureWithApplePay() throws Exception {
         final Card creditCard = new Card();
         creditCard.setCountry(DEFAULT_COUNTRY);
@@ -154,8 +159,9 @@ public class TestRemoteAdyenPaymentServiceProviderPort extends TestRemoteBase {
         final PaymentData<Card> paymentData = new PaymentData<Card>(new BigDecimal("1"), DEFAULT_CURRENCY, UUID.randomUUID().toString(), creditCard);
         final UserData userData = new UserData();
         final SplitSettlementData splitSettlementData = null;
+        final Map<String, String> additionalData = null;
 
-        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData);
+        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData, additionalData);
         Assert.assertNotNull(authorizeResult.getPspReference());
         Assert.assertEquals(authorizeResult.getResultCode(), "Authorised");
         Assert.assertNotNull(authorizeResult.getAuthCode());
@@ -163,7 +169,7 @@ public class TestRemoteAdyenPaymentServiceProviderPort extends TestRemoteBase {
     }
 
     // Disabled by default since Boleto isn't enabled automatically on the sandbox
-    @Test(groups = "slow", enabled = false)
+    @Test(groups = "integration", enabled = false)
     public void testBoleto() throws Exception {
         final PaymentInfo boleto = new PaymentInfo();
         boleto.setCountry("BR");
@@ -174,8 +180,9 @@ public class TestRemoteAdyenPaymentServiceProviderPort extends TestRemoteBase {
         userData.setFirstName("José");
         userData.setLastName("Silva");
         final SplitSettlementData splitSettlementData = null;
+        final Map<String, String> additionalData = null;
 
-        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData);
+        final PurchaseResult authorizeResult = adyenPaymentServiceProviderPort.authorise(merchantAccount, paymentData, userData, splitSettlementData, additionalData);
         Assert.assertNotNull(authorizeResult.getPspReference());
         Assert.assertEquals(authorizeResult.getResultCode(), "Received");
         Assert.assertNull(authorizeResult.getAuthCode());

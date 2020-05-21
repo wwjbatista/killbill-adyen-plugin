@@ -1,6 +1,6 @@
 /*
- * Copyright 2014-2016 Groupon, Inc
- * Copyright 2014-2016 The Billing Project, LLC
+ * Copyright 2014-2018 Groupon, Inc
+ * Copyright 2014-2018 The Billing Project, LLC
  *
  * The Billing Project licenses this file to you under the Apache License, version 2.0
  * (the "License"); you may not use this file except in compliance with the
@@ -17,12 +17,15 @@
 
 package org.killbill.billing.plugin.adyen.client;
 
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 
 import javax.annotation.Nullable;
 
@@ -31,6 +34,7 @@ import org.joda.time.Period;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 
 public class AdyenConfigProperties {
 
@@ -38,6 +42,7 @@ public class AdyenConfigProperties {
 
     public static final String DEFAULT_PENDING_PAYMENT_EXPIRATION_PERIOD = "P3d";
     public static final String DEFAULT_PENDING_3DS_PAYMENT_EXPIRATION_PERIOD = "PT3h";
+    public static final String DEFAULT_PENDING_HPP_PAYMENT_WITHOUT_COMPLETION_EXPIRATION_PERIOD = "PT3h";
     // Online (real-time) bank transfers offer merchants payment with immediate online authorisation via a customer’s bank, usually followed by next-day settlement.
     public static final List<String> DEFAULT_ONLINE_BANK_TRANSFER_PAYMENT_METHODS = ImmutableList.<String>of("giropay", "ideal", "paypal");
     // Period is a bit generous by default. Decision is synchronous with the redirect, but Adyen might have notification delays.
@@ -49,6 +54,7 @@ public class AdyenConfigProperties {
                                                                                                               "sepadirectdebit");
     // Period is a bit aggressive by default. SOFORT (directEbanking) payment can take up to 14 days.
     public static final String DEFAULT_OFFLINE_BANK_TRANSFER_PENDING_PAYMENT_EXPIRATION_PERIOD = "P7d";
+    public static final String FALL_BACK_MERCHANT_ACCOUNT_KEY = "FALLBACK";
 
     private static final String PROPERTY_PREFIX = "org.killbill.billing.plugin.adyen.";
     private static final String ENTRY_DELIMITER = "|";
@@ -56,6 +62,7 @@ public class AdyenConfigProperties {
     private static final String DEFAULT_CONNECTION_TIMEOUT = "30000";
     private static final String DEFAULT_READ_TIMEOUT = "60000";
 
+    private final Map<String, String> paymentProcessorAccountIdToMerchantAccountMap = new LinkedHashMap<>();
     private final Map<String, String> countryToMerchantAccountMap = new LinkedHashMap<String, String>();
     private final Map<String, String> merchantAccountToUsernameMap = new LinkedHashMap<String, String>();
     private final Map<String, String> usernameToPasswordMap = new LinkedHashMap<String, String>();
@@ -66,7 +73,9 @@ public class AdyenConfigProperties {
     private final Map<String, String> regionToPaymentUrlMap = new LinkedHashMap<String, String>();
     private final Map<String, String> regionToRecurringUrlMap = new LinkedHashMap<String, String>();
     private final Map<String, String> regionToDirectoryUrlMap = new LinkedHashMap<String, String>();
+    private final List<String> sensitivePropertyKeys = new ArrayList<>();
 
+    private final String paymentProcessorAccountIdToMerchantAccount;
     private final String merchantAccounts;
     private final String userNames;
     private final String passwords;
@@ -89,12 +98,18 @@ public class AdyenConfigProperties {
     private final String acquirersList;
     private final String paymentConnectionTimeout;
     private final String paymentReadTimeout;
+    private final String fallBackMerchantAccount;
 
     private final Period pendingPaymentExpirationPeriod;
+
+    private final Period pendingHppPaymentWithoutCompletionExpirationPeriod;
 
     private final Period pending3DsPaymentExpirationPeriod;
 
     private final String currentRegion;
+
+    private final String invoicePaymentEnabled;
+    private final Set<String> chargebackAsFailurePaymentMethods;
 
     public AdyenConfigProperties(final Properties properties) {
         this(properties, null);
@@ -102,6 +117,9 @@ public class AdyenConfigProperties {
 
     public AdyenConfigProperties(final Properties properties, final String currentRegion) {
         this.currentRegion = currentRegion;
+
+        this.invoicePaymentEnabled = properties.getProperty(PROPERTY_PREFIX + "invoicePaymentEnabled", "false");
+        this.chargebackAsFailurePaymentMethods = ImmutableSet.<String>copyOf(properties.getProperty(PROPERTY_PREFIX + "chargebackAsFailurePaymentMethods", "").split(","));
 
         this.proxyServer = properties.getProperty(PROPERTY_PREFIX + "proxyServer");
         this.proxyPort = properties.getProperty(PROPERTY_PREFIX + "proxyPort");
@@ -130,11 +148,22 @@ public class AdyenConfigProperties {
 
         this.pendingPaymentExpirationPeriod = readPendingExpirationProperty(properties);
         this.pending3DsPaymentExpirationPeriod = read3DsPendingExpirationProperty(properties);
+        this.pendingHppPaymentWithoutCompletionExpirationPeriod = readPendingHppPaymentWithoutCompletionExpirationPeriod(properties);
 
         this.acquirersList = properties.getProperty(PROPERTY_PREFIX + "acquirersList");
 
+        this.paymentProcessorAccountIdToMerchantAccount = properties.getProperty(PROPERTY_PREFIX + "paymentProcessorAccountIdToMerchantAccount");
+        refillMap(paymentProcessorAccountIdToMerchantAccountMap, paymentProcessorAccountIdToMerchantAccount);
+
         this.merchantAccounts = properties.getProperty(PROPERTY_PREFIX + "merchantAccount");
         refillMap(countryToMerchantAccountMap, merchantAccounts);
+        if (this.countryToMerchantAccountMap.containsKey(FALL_BACK_MERCHANT_ACCOUNT_KEY)) {
+            this.fallBackMerchantAccount = this.countryToMerchantAccountMap.get(FALL_BACK_MERCHANT_ACCOUNT_KEY);
+            this.countryToMerchantAccountMap.remove(FALL_BACK_MERCHANT_ACCOUNT_KEY);
+        }
+        else {
+            this.fallBackMerchantAccount = null;
+        }
 
         this.userNames = properties.getProperty(PROPERTY_PREFIX + "username");
         final Map<String, String> countryOrMerchantAccountToUsernameMap = new LinkedHashMap<String, String>();
@@ -185,6 +214,28 @@ public class AdyenConfigProperties {
             final String secretAlgorithm = countryOrSkinToSecretAlgorithmMap.get(countryOrSkin);
             skinToSecretAlgorithmMap.put(skin, secretAlgorithm);
         }
+
+        readSensitivePropertyKeys(properties.getProperty(PROPERTY_PREFIX + "sensitiveProperties"));
+    }
+
+    private void readSensitivePropertyKeys(final String property) {
+        sensitivePropertyKeys.clear();
+        if(!Strings.isNullOrEmpty(property)) {
+            for (final String entry : property.split("\\" + ENTRY_DELIMITER)) {
+                sensitivePropertyKeys.add(entry);
+            }
+        }
+    }
+
+    private Period readPendingHppPaymentWithoutCompletionExpirationPeriod(final Properties properties) {
+        final String value = properties.getProperty(PROPERTY_PREFIX + "pendingHppPaymentWithoutCompletionExpirationPeriod");
+        if (value != null) {
+            try {
+                return Period.parse(value);
+            } catch (final IllegalArgumentException e) { /* Ignore */ }
+        }
+
+        return Period.parse(DEFAULT_PENDING_HPP_PAYMENT_WITHOUT_COMPLETION_EXPIRATION_PERIOD);
     }
 
     private Period readPendingExpirationProperty(final Properties properties) {
@@ -234,14 +285,30 @@ public class AdyenConfigProperties {
         return Period.parse(DEFAULT_PENDING_3DS_PAYMENT_EXPIRATION_PERIOD);
     }
 
+    public Boolean getInvoicePaymentEnabled() {
+        return Boolean.valueOf(invoicePaymentEnabled);
+    }
+
+    public Set<String> getChargebackAsFailurePaymentMethods() {
+        return chargebackAsFailurePaymentMethods;
+    }
+
+    public Optional<String> getMerchantAccountOfPaymentProcessorAccountId(final String paymentProcessorAccountId) {
+        return Optional.ofNullable(paymentProcessorAccountIdToMerchantAccountMap.get(paymentProcessorAccountId));
+    }
+
     public String getMerchantAccount(final String countryIsoCode) {
         if (countryToMerchantAccountMap.isEmpty()) {
             return merchantAccounts;
         } else if (countryIsoCode == null) {
-            // In case no country is specified, but the user configured the merchant accounts per country, take the first one
-            return countryToMerchantAccountMap.values().iterator().next();
+            // In case no country is specified, but the user configured the merchant accounts per country, take the fallback one if configured. Otherwise, take the first one.
+            return MoreObjects.firstNonNull(fallBackMerchantAccount, countryToMerchantAccountMap.values().iterator().next());
         } else {
-            return countryToMerchantAccountMap.get(adjustCountryCode(countryIsoCode));
+            try {
+                return MoreObjects.firstNonNull(countryToMerchantAccountMap.get(adjustCountryCode(countryIsoCode)), fallBackMerchantAccount);
+            } catch (NullPointerException exception) {
+                throw new IllegalStateException(String.format("Failed to find merchant account for countryCode='%s'", countryIsoCode), exception);
+            }
         }
     }
 
@@ -364,6 +431,10 @@ public class AdyenConfigProperties {
         return recurringReadTimeout;
     }
 
+    public List<String> getSensitivePropertyKeys() {
+        return sensitivePropertyKeys;
+    }
+
     private static String adjustCountryCode(final String countryIsoCode) {
         if (Strings.isNullOrEmpty(countryIsoCode)) {
             return null;
@@ -397,11 +468,15 @@ public class AdyenConfigProperties {
         map.clear();
         if (!Strings.isNullOrEmpty(stringToSplit)) {
             for (final String entry : stringToSplit.split("\\" + ENTRY_DELIMITER)) {
-                final String[] split = entry.split(KEY_VALUE_DELIMITER);
+                final String[] split = entry.split(KEY_VALUE_DELIMITER, 2);
                 if (split.length > 1) {
                     map.put(split[0], split[1]);
                 }
             }
         }
+    }
+
+    public Period getPendingHppPaymentWithoutCompletionExpirationPeriod() {
+        return pendingHppPaymentWithoutCompletionExpirationPeriod;
     }
 }

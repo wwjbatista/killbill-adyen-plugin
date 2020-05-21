@@ -1,7 +1,8 @@
 /*
- * Copyright 2014-2016 Groupon, Inc
+ * Copyright 2014-2018 Groupon, Inc
+ * Copyright 2014-2018 The Billing Project, LLC
  *
- * Groupon licenses this file to you under the Apache License, version 2.0
+ * The Billing Project licenses this file to you under the Apache License, version 2.0
  * (the "License"); you may not use this file except in compliance with the
  * License.  You may obtain a copy of the License at:
  *
@@ -19,10 +20,12 @@ package org.killbill.billing.plugin.adyen.core;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Properties;
 import java.util.UUID;
 
 import javax.annotation.Nullable;
 
+import org.joda.time.DateTime;
 import org.killbill.adyen.common.Amount;
 import org.killbill.adyen.notification.NotificationRequestItem;
 import org.killbill.billing.account.api.Account;
@@ -38,8 +41,10 @@ import org.killbill.billing.payment.plugin.api.PaymentTransactionInfoPlugin;
 import org.killbill.billing.plugin.TestUtils;
 import org.killbill.billing.plugin.adyen.api.AdyenPaymentTransactionInfoPlugin;
 import org.killbill.billing.plugin.adyen.api.TestAdyenPaymentPluginApiBase;
+import org.killbill.billing.plugin.adyen.client.AdyenConfigProperties;
 import org.killbill.billing.plugin.adyen.client.model.PaymentServiceProviderResult;
 import org.killbill.billing.plugin.adyen.client.model.PurchaseResult;
+import org.killbill.billing.plugin.adyen.client.notification.AdyenNotificationHandler;
 import org.killbill.billing.plugin.adyen.dao.gen.tables.records.AdyenNotificationsRecord;
 import org.killbill.billing.util.callcontext.CallContext;
 import org.mockito.Mockito;
@@ -65,6 +70,7 @@ public class TestKillbillAdyenNotificationHandler extends TestAdyenPaymentPlugin
                                                                Mockito.<UUID>any(),
                                                                Mockito.<BigDecimal>any(),
                                                                Mockito.<Currency>any(),
+                                                               Mockito.<DateTime>any(),
                                                                Mockito.<String>any(),
                                                                Mockito.<Iterable<PluginProperty>>any(),
                                                                Mockito.<CallContext>any()))
@@ -73,7 +79,7 @@ public class TestKillbillAdyenNotificationHandler extends TestAdyenPaymentPlugin
                    public Payment answer(final InvocationOnMock invocation) throws Throwable {
                        final BigDecimal amount = (BigDecimal) invocation.getArguments()[2];
                        final Currency currency = (Currency) invocation.getArguments()[3];
-                       final String paymentTransactionExternalKey = MoreObjects.firstNonNull((String) invocation.getArguments()[4], UUID.randomUUID().toString());
+                       final String paymentTransactionExternalKey = MoreObjects.firstNonNull((String) invocation.getArguments()[5], UUID.randomUUID().toString());
 
                        TestUtils.buildPaymentTransaction(payment, paymentTransactionExternalKey, TransactionType.CAPTURE, TransactionStatus.SUCCESS, amount, currency);
 
@@ -84,7 +90,10 @@ public class TestKillbillAdyenNotificationHandler extends TestAdyenPaymentPlugin
         TestUtils.buildPaymentMethod(account.getId(), account.getPaymentMethodId(), AdyenActivator.PLUGIN_NAME, killbillApi);
         payment = TestUtils.buildPayment(account.getId(), account.getPaymentMethodId(), account.getCurrency(), killbillApi);
 
-        killbillAdyenNotificationHandler = new KillbillAdyenNotificationHandler(killbillApi, dao, clock);
+        adyenConfigPropertiesConfigurationHandler = new AdyenConfigPropertiesConfigurationHandler(AdyenActivator.PLUGIN_NAME, killbillApi, logService, null);
+        adyenConfigPropertiesConfigurationHandler.setDefaultConfigurable(new AdyenConfigProperties(new Properties()));
+
+        killbillAdyenNotificationHandler = new KillbillAdyenNotificationHandler(adyenConfigPropertiesConfigurationHandler, killbillApi, dao, clock);
     }
 
     @Test(groups = "slow")
@@ -337,7 +346,7 @@ public class TestKillbillAdyenNotificationHandler extends TestAdyenPaymentPlugin
         final NotificationRequestItem notificationOfChargebackItem = getNotificationRequestItem(purchaseItem, "NOTIFICATION_OF_CHARGEBACK", success);
 
         killbillAdyenNotificationHandler.handleNotification(notificationOfChargebackItem);
-        // We'll find the payment, but there is not associated transaction (yet)
+        // We'll find the payment, but there is no associated transaction (yet)
         verifyLastNotificationRecorded(2, null);
 
         Assert.assertEquals(payment.getTransactions().size(), 1);
@@ -348,7 +357,7 @@ public class TestKillbillAdyenNotificationHandler extends TestAdyenPaymentPlugin
         final NotificationRequestItem requestForInformationItem = getNotificationRequestItem(purchaseItem, "REQUEST_FOR_INFORMATION", success);
 
         killbillAdyenNotificationHandler.handleNotification(requestForInformationItem);
-        // We'll find the payment, but there is not associated transaction (yet)
+        // We'll find the payment, but there is no associated transaction (yet)
         verifyLastNotificationRecorded(3, null);
 
         Assert.assertEquals(payment.getTransactions().size(), 1);
@@ -463,6 +472,43 @@ public class TestKillbillAdyenNotificationHandler extends TestAdyenPaymentPlugin
         Assert.assertEquals(payment.getTransactions().get(1).getTransactionStatus(), TransactionStatus.SUCCESS);
         Assert.assertEquals(payment.getTransactions().get(2).getTransactionType(), TransactionType.CHARGEBACK);
         Assert.assertEquals(payment.getTransactions().get(2).getTransactionStatus(), TransactionStatus.SUCCESS);
+    }
+
+    @Test(groups = "slow")
+    public void testHandleSEPAChargebackForPURCHASE() throws Exception {
+        final Properties propertiesForSEPA = new Properties(properties);
+        propertiesForSEPA.put("org.killbill.billing.plugin.adyen.chargebackAsFailurePaymentMethods", "ach,sepadirectdebit");
+        final AdyenConfigPropertiesConfigurationHandler configurationHandlerForSEPA = new AdyenConfigPropertiesConfigurationHandler(AdyenActivator.PLUGIN_NAME,
+                                                                                                                                    killbillApi,
+                                                                                                                                    logService,
+                                                                                                                                    null);
+        configurationHandlerForSEPA.setDefaultConfigurable(new AdyenConfigProperties(propertiesForSEPA));
+        final AdyenNotificationHandler handlerForSEPA = new KillbillAdyenNotificationHandler(configurationHandlerForSEPA,
+                                                                                             killbillApi,
+                                                                                             dao,
+                                                                                             clock);
+
+        final boolean success = true;
+
+        final NotificationRequestItem authItem = getNotificationRequestItem("AUTHORISATION", success);
+        setupTransaction(TransactionType.PURCHASE, authItem);
+
+        handlerForSEPA.handleNotification(authItem);
+        verifyLastNotificationRecorded(1);
+
+        Assert.assertEquals(payment.getTransactions().size(), 1);
+        Assert.assertEquals(payment.getTransactions().get(0).getTransactionType(), TransactionType.PURCHASE);
+        Assert.assertEquals(payment.getTransactions().get(0).getTransactionStatus(), TransactionStatus.SUCCESS);
+
+        final NotificationRequestItem chargebackItem = getNotificationRequestItem(authItem, "CHARGEBACK", success);
+        chargebackItem.setPaymentMethod("sepadirectdebit");
+
+        handlerForSEPA.handleNotification(chargebackItem);
+        verifyLastNotificationRecorded(2);
+
+        Assert.assertEquals(payment.getTransactions().size(), 1);
+        Assert.assertEquals(payment.getTransactions().get(0).getTransactionType(), TransactionType.PURCHASE);
+        Assert.assertEquals(payment.getTransactions().get(0).getTransactionStatus(), TransactionStatus.PAYMENT_FAILURE);
     }
 
     @Test(groups = "slow")

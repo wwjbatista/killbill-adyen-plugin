@@ -15,6 +15,8 @@ Kill Bill compatibility
 | 0.3.y          | 0.16.z            |
 | 0.4.y          | 0.17.z            |
 | 0.5.y          | 0.18.z            |
+| 0.6.y          | 0.19.z            |
+| 0.7.y          | 0.20.z            |
 
 Requirements
 ------------
@@ -41,6 +43,8 @@ The following properties are optional:
 * `org.killbill.billing.plugin.adyen.proxyPort`: Proxy server port
 * `org.killbill.billing.plugin.adyen.proxyType`: Proxy server type (HTTP or SOCKS)
 * `org.killbill.billing.plugin.adyen.trustAllCertificates`: Whether to disable SSL certificates validation
+* `org.killbill.billing.plugin.adyen.sensitiveProperties`: A list of sensitive property keys; if specified, they won't be persisted in the additional field of Adyen hpp request table.
+* `org.killbill.billing.plugin.adyen.paymentProcessorAccountIdToMerchantAccount`: Mappings from the `paymentProcessorAccountId` to Adyen merchant accounts. The `paymentProcessorAccountId`, if exists in the plugin property, is a `String` set by the upstream logic to specify the merchant account used in the transaction.
 
 Only needed for the Tests:
 
@@ -59,6 +63,7 @@ Notes:
   * `XX#YY` in the password property where `XX` is the username
   * `XX#YY` in the skin property where `XX` is the merchant account
   * `XX#YY` in the hmac secret property where `XX` is the skin name
+* You can also configure a FALLBACK merchant account like `FALLBACK#FallBackMerchantAccount`, which will be chosen if no matched merchant account is found based on the country code.
 
 To configure Hosted Payment Pages (HPP):
 
@@ -314,7 +319,7 @@ There are 3 different use cases:
 
 1. Use Adyen's recurring payments feature with contract `RECURRING`: CVV is not required (it's an implicit `contAuth`)
 2. Use Adyen's recurring payment feature with contract `ONECLICK`: CVV is always required
-3. Use you own card-on-file system + `contAuth` to simulate option 1. Instead of providing Adyen's `recurringDetailId`, the merchant retrieves stored payment data from its store and populates the fields like a normal payment request. `contAuth` is needed to turn Adyen's (not needed) validations off.
+3. Use your own card-on-file system + `contAuth` to simulate option 1. Instead of providing Adyen's `recurringDetailId`, the merchant retrieves stored payment data from its store and populates the fields like a normal payment request. `contAuth` is needed to turn Adyen's (not needed) validations off.
 
 #### Client-Side Encryption (CSE)
 
@@ -444,6 +449,7 @@ Plugin properties
 | zip                      | Billing address zip code                      |
 | state                    | Billing address state                         |
 | country                  | Billing address country                       |
+| sepaCountryCode          | Billing address country code for SEPA requests. If absent, it will use country instead |
 | PaReq                    | 3D-Secure Pa Request                          |
 | PaRes                    | 3D-Secure Pa Response                         |
 | MD                       | 3D-Secure Message Digest                      |

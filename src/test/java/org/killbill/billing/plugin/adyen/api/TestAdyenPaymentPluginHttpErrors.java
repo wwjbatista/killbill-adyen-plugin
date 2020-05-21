@@ -1,7 +1,8 @@
 /*
- * Copyright 2015-2016 Groupon, Inc
+ * Copyright 2014-2018 Groupon, Inc
+ * Copyright 2014-2018 The Billing Project, LLC
  *
- * Groupon licenses this file to you under the Apache License, version 2.0
+ * The Billing Project licenses this file to you under the Apache License, version 2.0
  * (the "License"); you may not use this file except in compliance with the
  * License.  You may obtain a copy of the License at:
  *
@@ -42,13 +43,9 @@ import org.killbill.billing.payment.plugin.api.PaymentPluginStatus;
 import org.killbill.billing.payment.plugin.api.PaymentTransactionInfoPlugin;
 import org.killbill.billing.plugin.TestUtils;
 import org.killbill.billing.plugin.adyen.AdyenPluginMockBuilder;
-import org.killbill.billing.plugin.adyen.EmbeddedDbHelper;
-import org.killbill.billing.plugin.adyen.dao.AdyenDao;
+import org.killbill.billing.plugin.adyen.TestWithEmbeddedDBBase;
 import org.killbill.billing.util.callcontext.CallContext;
 import org.mockito.Mockito;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -64,13 +61,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.killbill.billing.plugin.TestUtils.toProperties;
-import static org.killbill.billing.plugin.adyen.TestRemoteBase.CC_EXPIRATION_MONTH;
-import static org.killbill.billing.plugin.adyen.TestRemoteBase.CC_EXPIRATION_YEAR;
-import static org.killbill.billing.plugin.adyen.TestRemoteBase.CC_NUMBER;
-import static org.killbill.billing.plugin.adyen.TestRemoteBase.CC_TYPE;
-import static org.killbill.billing.plugin.adyen.TestRemoteBase.CC_VERIFICATION_VALUE;
-import static org.killbill.billing.plugin.adyen.TestRemoteBase.DEFAULT_COUNTRY;
-import static org.killbill.billing.plugin.adyen.TestRemoteBase.DEFAULT_CURRENCY;
 import static org.killbill.billing.plugin.adyen.api.TestAdyenPaymentPluginHttpErrors.WireMockHelper.doWithWireMock;
 import static org.killbill.billing.plugin.adyen.api.TestAdyenPaymentPluginHttpErrors.WireMockHelper.wireMockUri;
 import static org.testng.Assert.assertEquals;
@@ -84,7 +74,7 @@ import static org.testng.Assert.assertTrue;
  * <p/>
  * Attention: If you have failing tests check first that you don't have a proxy configured (Charles, Fiddler, Burp etc...).
  */
-public class TestAdyenPaymentPluginHttpErrors {
+public class TestAdyenPaymentPluginHttpErrors extends TestWithEmbeddedDBBase {
 
     private static final int OK = 200;
     private static final int UNAUTHORIZED = 401;
@@ -94,23 +84,6 @@ public class TestAdyenPaymentPluginHttpErrors {
 
     private static final String ADYEN_PATH = "/adyen";
 
-    private AdyenDao dao;
-
-    @BeforeClass(groups = "slow")
-    public void setUpBeforeClass() throws Exception {
-        dao = EmbeddedDbHelper.instance().startDb();
-    }
-
-    @BeforeMethod(groups = "slow")
-    public void setUpBeforeMethod() throws Exception {
-        EmbeddedDbHelper.instance().resetDB();
-    }
-
-    @AfterClass(groups = "slow")
-    public void tearDownAfterClass() throws Exception {
-        EmbeddedDbHelper.instance().stopDB();
-    }
-
     @Test(groups = "slow")
     public void testAuthorizeAdyenNotReachable() throws Exception {
 
@@ -119,11 +92,10 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", unReachableUri)
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -148,11 +120,10 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", freeLocalPort)
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -174,16 +145,15 @@ public class TestAdyenPaymentPluginHttpErrors {
     /**
      * Sanity check that a refused purchase (wrong cc data) still results in an error.
      */
-    @Test(groups = "slow")
+    @Test(groups = "integration")
     public void testAuthorizeWithIncorrectValues() throws Exception {
         final String expectedGatewayError = "CVC Declined";
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
-        final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
-                                                                      .withAccount(account)
+        final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin(properties)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -207,10 +177,9 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -236,12 +205,11 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", wireMockUri(ADYEN_PATH))
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentReadTimeout", String.valueOf(adyenClientReadTimeout))
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -275,11 +243,10 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", wireMockUri(ADYEN_PATH))
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -306,16 +273,15 @@ public class TestAdyenPaymentPluginHttpErrors {
         assertNull(result.getGatewayErrorCode());
     }
 
-    @Test(groups = "slow")
+    @Test(groups = "integration")
     public void testRefundAdyenBadResponse() throws Exception {
 
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
-        final AdyenPaymentPluginApi authorizeApi = AdyenPluginMockBuilder.newPlugin()
-                                                                         .withAccount(account)
+        final AdyenPaymentPluginApi authorizeApi = AdyenPluginMockBuilder.newPlugin(properties)
                                                                          .withOSGIKillbillAPI(killbillAPI)
                                                                          .withDatabaseAccess(dao)
                                                                          .build();
@@ -324,7 +290,6 @@ public class TestAdyenPaymentPluginHttpErrors {
 
         final AdyenPaymentPluginApi refundApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", wireMockUri(ADYEN_PATH))
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -369,11 +334,10 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", wireMockUri(ADYEN_PATH))
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -406,11 +370,10 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", wireMockUri(ADYEN_PATH))
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -442,11 +405,10 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", wireMockUri(ADYEN_PATH))
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -478,11 +440,10 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", wireMockUri(ADYEN_PATH))
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -514,11 +475,10 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", wireMockUri(ADYEN_PATH))
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -553,11 +513,10 @@ public class TestAdyenPaymentPluginHttpErrors {
         final Account account = defaultAccount();
         final OSGIKillbillAPI killbillAPI = TestUtils.buildOSGIKillbillAPI(account);
         final Payment payment = killBillPayment(account, killbillAPI);
-        final AdyenCallContext callContext = newCallContext();
+        final AdyenCallContext callContext = newCallContext(account);
 
         final AdyenPaymentPluginApi pluginApi = AdyenPluginMockBuilder.newPlugin()
                                                                       .withAdyenProperty("org.killbill.billing.plugin.adyen.paymentUrl", wireMockUri(ADYEN_PATH))
-                                                                      .withAccount(account)
                                                                       .withOSGIKillbillAPI(killbillAPI)
                                                                       .withDatabaseAccess(dao)
                                                                       .build();
@@ -598,8 +557,8 @@ public class TestAdyenPaymentPluginHttpErrors {
         return toProperties(invalidCreditCardData);
     }
 
-    private AdyenCallContext newCallContext() {
-        return new AdyenCallContext(DateTime.now(), UUID.randomUUID());
+    private AdyenCallContext newCallContext(final Account account) {
+        return new AdyenCallContext(DateTime.now(), account.getId(), UUID.randomUUID());
     }
 
     private Payment killBillPayment(final Account account, final OSGIKillbill killbillAPI) throws PaymentApiException {

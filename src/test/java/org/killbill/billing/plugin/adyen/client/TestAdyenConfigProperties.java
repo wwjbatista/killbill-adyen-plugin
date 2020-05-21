@@ -22,6 +22,8 @@ import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import com.google.common.collect.ImmutableList;
+
 public class TestAdyenConfigProperties {
 
     @Test(groups = "fast")
@@ -36,6 +38,7 @@ public class TestAdyenConfigProperties {
         properties.put("org.killbill.billing.plugin.adyen.paymentUrl", "http://paymentUrl.com");
         properties.put("org.killbill.billing.plugin.adyen.recurringUrl", "http://recurringUrl.com");
         properties.put("org.killbill.billing.plugin.adyen.directoryUrl", "http://directoryUrl.com");
+        properties.put("org.killbill.billing.plugin.adyen.sensitiveProperties", "ip|username|email|paymentBillingRecord");
         final AdyenConfigProperties adyenConfigProperties = new AdyenConfigProperties(properties);
 
         Assert.assertEquals(adyenConfigProperties.getMerchantAccount("UK"), "DefaultAccount");
@@ -53,6 +56,7 @@ public class TestAdyenConfigProperties {
         Assert.assertEquals(adyenConfigProperties.getHmacAlgorithm("DefaultSkin"), "HmacSHA256");
 
         Assert.assertEquals(adyenConfigProperties.getPending3DsPaymentExpirationPeriod().toString(), "PT3H");
+        Assert.assertEquals(adyenConfigProperties.getPendingHppPaymentWithoutCompletionExpirationPeriod().toString(), "PT3H");
         Assert.assertEquals(adyenConfigProperties.getPendingPaymentExpirationPeriod(null).toString(), "P2D");
         // Don't use per-payment method default since user specified a global setting
         Assert.assertEquals(adyenConfigProperties.getPendingPaymentExpirationPeriod("paypal").toString(), "P2D");
@@ -61,6 +65,8 @@ public class TestAdyenConfigProperties {
         Assert.assertEquals(adyenConfigProperties.getPaymentUrl(), "http://paymentUrl.com");
         Assert.assertEquals(adyenConfigProperties.getRecurringUrl(), "http://recurringUrl.com");
         Assert.assertEquals(adyenConfigProperties.getDirectoryUrl(), "http://directoryUrl.com");
+
+        Assert.assertEquals(adyenConfigProperties.getSensitivePropertyKeys(), ImmutableList.of("ip", "username", "email", "paymentBillingRecord"));
     }
 
     @Test(groups = "fast")
@@ -68,7 +74,7 @@ public class TestAdyenConfigProperties {
         final Properties properties = new Properties();
         properties.put("org.killbill.billing.plugin.adyen.merchantAccount", "UK#DefaultAccountUK|DE#DefaultAccountDE|US#DefaultAccountUS");
         properties.put("org.killbill.billing.plugin.adyen.username", "UK#DefaultUsernameUK|DE#DefaultUsernameDE|US#DefaultUsernameUS");
-        properties.put("org.killbill.billing.plugin.adyen.password", "UK#DefaultPasswordUK|DE#DefaultPasswordDE|DefaultUsernameUS#DefaultPasswordUS");
+        properties.put("org.killbill.billing.plugin.adyen.password", "UK#DefaultPasswordUK|DE#DefaultPasswordDE|DefaultUsernameUS#Default#PasswordUS");
         properties.put("org.killbill.billing.plugin.adyen.skin", "UK#DefaultSkinUK|US#DefaultSkinUS|DE#DefaultSkinDE");
         properties.put("org.killbill.billing.plugin.adyen.hmac.secret", "UK#DefaultSecretUK|US#DefaultSecretUS|DE#DefaultSecretDE");
         properties.put("org.killbill.billing.plugin.adyen.hmac.algorithm", "UK#DefaultAlgorithmUK|US#DefaultAlgorithmUS|DE#DefaultAlgorithmDE");
@@ -85,7 +91,7 @@ public class TestAdyenConfigProperties {
 
         Assert.assertEquals(adyenConfigProperties.getPassword("DefaultUsernameUK"), "DefaultPasswordUK");
         Assert.assertEquals(adyenConfigProperties.getPassword("DefaultUsernameDE"), "DefaultPasswordDE");
-        Assert.assertEquals(adyenConfigProperties.getPassword("DefaultUsernameUS"), "DefaultPasswordUS");
+        Assert.assertEquals(adyenConfigProperties.getPassword("DefaultUsernameUS"), "Default#PasswordUS");
 
         Assert.assertEquals(adyenConfigProperties.getSkin("DefaultAccountUK"), "DefaultSkinUK");
         Assert.assertEquals(adyenConfigProperties.getSkin("DefaultAccountDE"), "DefaultSkinDE");
@@ -100,6 +106,7 @@ public class TestAdyenConfigProperties {
         Assert.assertEquals(adyenConfigProperties.getHmacAlgorithm("DefaultSkinUS"), "DefaultAlgorithmUS");
 
         Assert.assertEquals(adyenConfigProperties.getPending3DsPaymentExpirationPeriod().toString(), "PT3H");
+        Assert.assertEquals(adyenConfigProperties.getPendingHppPaymentWithoutCompletionExpirationPeriod().toString(), "PT3H");
         Assert.assertEquals(adyenConfigProperties.getPendingPaymentExpirationPeriod(null).toString(), "P3D");
         Assert.assertEquals(adyenConfigProperties.getPendingPaymentExpirationPeriod("paypal").toString(), "P4D");
         // Use per-payment method default since user did only override paypal
@@ -111,11 +118,12 @@ public class TestAdyenConfigProperties {
         final Properties properties = new Properties();
         properties.put("org.killbill.billing.plugin.adyen.merchantAccount", "UK#DefaultAccountUK|DE#DefaultAccountDE|US#DefaultAccountUS");
         properties.put("org.killbill.billing.plugin.adyen.username", "UK#DefaultUsernameUK|DE#DefaultUsernameDE|OverrideAccountUK#OverrideUsernameUK|US#DefaultUsernameUS");
-        properties.put("org.killbill.billing.plugin.adyen.password", "UK#DefaultPasswordUK|OverrideUsernameUK#OverridePasswordUK|DE#DefaultPasswordDE|DefaultUsernameUS#DefaultPasswordUS");
+        properties.put("org.killbill.billing.plugin.adyen.password", "UK#DefaultPasswordUK|OverrideUsernameUK#OverridePasswordUK|DE#DefaultPasswordDE|DefaultUsernameUS#Default#PasswordUS");
         properties.put("org.killbill.billing.plugin.adyen.skin", "UK#DefaultSkinUK|OverrideAccountUK#OverrideSkinUK|US#DefaultSkinUS|DE#DefaultSkinDE");
-        properties.put("org.killbill.billing.plugin.adyen.hmac.secret", "UK#DefaultSecretUK|OverrideSkinUK#OverrideSecretUK|US#DefaultSecretUS|DE#DefaultSecretDE");
+        properties.put("org.killbill.billing.plugin.adyen.hmac.secret", "UK#DefaultSecretUK|OverrideSkinUK#OverrideSecretUK|US#Default#SecretUS|DE#DefaultSecretDE");
         properties.put("org.killbill.billing.plugin.adyen.hmac.algorithm", "UK#DefaultAlgorithmUK|OverrideSkinUK#OverrideAlgorithmUK|US#DefaultAlgorithmUS|DE#DefaultAlgorithmDE");
         properties.put("org.killbill.billing.plugin.adyen.pendingPaymentExpirationPeriod", "paypal#P4D|boletobancario_santander#P12D");
+        properties.put("org.killbill.billing.plugin.adyen.pendingHppPaymentWithoutCompletionExpirationPeriod", "P12D");
         final AdyenConfigProperties adyenConfigProperties = new AdyenConfigProperties(properties);
 
         Assert.assertEquals(adyenConfigProperties.getMerchantAccount("UK"), "DefaultAccountUK");
@@ -130,7 +138,7 @@ public class TestAdyenConfigProperties {
         Assert.assertEquals(adyenConfigProperties.getPassword("DefaultUsernameUK"), "DefaultPasswordUK");
         Assert.assertEquals(adyenConfigProperties.getPassword("OverrideUsernameUK"), "OverridePasswordUK");
         Assert.assertEquals(adyenConfigProperties.getPassword("DefaultUsernameDE"), "DefaultPasswordDE");
-        Assert.assertEquals(adyenConfigProperties.getPassword("DefaultUsernameUS"), "DefaultPasswordUS");
+        Assert.assertEquals(adyenConfigProperties.getPassword("DefaultUsernameUS"), "Default#PasswordUS");
 
         Assert.assertEquals(adyenConfigProperties.getSkin("DefaultAccountUK"), "DefaultSkinUK");
         Assert.assertEquals(adyenConfigProperties.getSkin("OverrideAccountUK"), "OverrideSkinUK");
@@ -140,7 +148,7 @@ public class TestAdyenConfigProperties {
         Assert.assertEquals(adyenConfigProperties.getHmacSecret("DefaultSkinUK"), "DefaultSecretUK");
         Assert.assertEquals(adyenConfigProperties.getHmacSecret("OverrideSkinUK"), "OverrideSecretUK");
         Assert.assertEquals(adyenConfigProperties.getHmacSecret("DefaultSkinDE"), "DefaultSecretDE");
-        Assert.assertEquals(adyenConfigProperties.getHmacSecret("DefaultSkinUS"), "DefaultSecretUS");
+        Assert.assertEquals(adyenConfigProperties.getHmacSecret("DefaultSkinUS"), "Default#SecretUS");
 
         Assert.assertEquals(adyenConfigProperties.getHmacAlgorithm("DefaultSkinUK"), "DefaultAlgorithmUK");
         Assert.assertEquals(adyenConfigProperties.getHmacAlgorithm("OverrideSkinUK"), "OverrideAlgorithmUK");
@@ -151,6 +159,36 @@ public class TestAdyenConfigProperties {
         Assert.assertEquals(adyenConfigProperties.getPendingPaymentExpirationPeriod(null).toString(), "P3D");
         Assert.assertEquals(adyenConfigProperties.getPendingPaymentExpirationPeriod("paypal").toString(), "P4D");
         Assert.assertEquals(adyenConfigProperties.getPendingPaymentExpirationPeriod("boletobancario_santander").toString(), "P12D");
+        Assert.assertEquals(adyenConfigProperties.getPendingHppPaymentWithoutCompletionExpirationPeriod().toString(), "P12D");
+    }
+
+    @Test(groups = "fast")
+    public void testConfigurationWithFallbacks() throws Exception {
+        final Properties properties = new Properties();
+        properties.put("org.killbill.billing.plugin.adyen.merchantAccount", "UK#DefaultAccountUK|FALLBACK#FALLBACKAccountDE");
+        properties.put("org.killbill.billing.plugin.adyen.username", "UK#DefaultUsernameUK|FALLBACKAccountDE#DefaultUsernameDE");
+        properties.put("org.killbill.billing.plugin.adyen.password", "UK#DefaultPasswordUK|FALLBACKAccountDE#DefaultPasswordDE");
+        properties.put("org.killbill.billing.plugin.adyen.skin", "UK#DefaultSkinUK|FALLBACKAccountDE#FALLBACKSkinDE");
+        properties.put("org.killbill.billing.plugin.adyen.hmac.secret", "UK#DefaultSecretUK|FALLBACKAccountDE#FALLBACKHmacDE");
+        properties.put("org.killbill.billing.plugin.adyen.hmac.algorithm", "UK#DefaultAlgorithmUK|FALLBACKAccountDE#FALLBACKAlgorithmUK");
+        final AdyenConfigProperties adyenConfigProperties = new AdyenConfigProperties(properties);
+
+        Assert.assertEquals(adyenConfigProperties.getMerchantAccount("United States"), "FALLBACKAccountDE");
+        Assert.assertEquals(adyenConfigProperties.getUserName("FALLBACKAccountDE"), "DefaultUsernameDE");
+        Assert.assertEquals(adyenConfigProperties.getPassword("FALLBACKAccountDE"), "DefaultPasswordDE");
+        Assert.assertEquals(adyenConfigProperties.getSkin("FALLBACKAccountDE"), "FALLBACKSkinDE");
+        Assert.assertEquals(adyenConfigProperties.getHmacSecret("FALLBACKAccountDE"), "FALLBACKHmacDE");
+        Assert.assertEquals(adyenConfigProperties.getHmacAlgorithm("FALLBACKAccountDE"), "FALLBACKAlgorithmUK");
+    }
+
+    @Test(groups = "fast",
+          expectedExceptions = IllegalStateException.class,
+          expectedExceptionsMessageRegExp = "Failed to find merchant account for countryCode='United States'")
+    public void testConfigurationWithoutFallbackWithoutCountryCodeMatch() throws Exception {
+        final Properties properties = new Properties();
+        properties.put("org.killbill.billing.plugin.adyen.merchantAccount", "UK#DefaultAccountUK");
+        final AdyenConfigProperties adyenConfigProperties = new AdyenConfigProperties(properties);
+        adyenConfigProperties.getMerchantAccount("United States");
     }
 
     @Test(groups = "fast")
